@@ -99,6 +99,7 @@ class TranscriptionServer:
             del websocket
             return
 
+        # Once a client is allowed to connect, create an instance of ServerClient
         client = ServeClient(
             websocket,
             multilingual=options["multilingual"],
@@ -108,14 +109,16 @@ class TranscriptionServer:
         )
 
         self.clients[websocket] = client
-        self.clients_start_time[websocket] = time.time()
+        self.clients_start_time[websocket] = time.time()  # start the client's connection
 
         while True:
             try:
+                # Receives the audio chunks from the client
                 frame_data = websocket.recv()
                 frame_np = np.frombuffer(frame_data, dtype=np.float32)
 
                 try:
+                    # checks if there is actually speech in the audio chunks
                     speech_prob = self.vad_model(torch.from_numpy(frame_np.copy()), self.RATE).item()
                     if speech_prob < self.vad_threshold:
                         continue
@@ -124,9 +127,11 @@ class TranscriptionServer:
                     logging.error(e)
                     return
 
+                # add the audio chunk (if it contains speech) to the websocket so it can be processed for ASR later
                 self.clients[websocket].add_frames(frame_np)
 
                 elapsed_time = time.time() - self.clients_start_time[websocket]
+                # disconnect and clean up if the client has passed the max connection time
                 if elapsed_time >= self.max_connection_time:
                     self.clients[websocket].disconnect()
                     logging.warning(f"{self.clients[websocket]} Client disconnected due to overtime.")
